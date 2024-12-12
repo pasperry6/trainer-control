@@ -1,4 +1,9 @@
 # trainer-control
 Todo:
-1. use Supported Resistance Level Range characteristic to find the resistance level range - use same for power if need to confirm - should stop around 900W
-2. 
+1. 
+
+Big Picture:
+1. Perfect the VS code version
+2. Create IOS app - try to do in C first so it is easier to make embedded system
+3. Test IOS app and gague interest - maybe publish if worth it ($99)
+4. Make embedded system
