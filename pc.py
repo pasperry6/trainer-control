@@ -1,24 +1,24 @@
 import asyncio
 from bleak import BleakScanner, BleakClient
 
+# UUIDS
 FTMS_UUID = "00001826-0000-1000-8000-00805f9b34fb"  # FTMS Service UUID
 FTMS_CONTROL_POINT_UUID = "00002ad9-0000-1000-8000-00805f9b34fb"  # FTMS Control Point Characteristic UUID
-
-# Replace with your trainer's specific range
-MIN_RESISTANCE_DN = 0      # Minimum resistance in deciNewtons
-MAX_RESISTANCE_DN = 40972  # Maximum resistance in deciNewtons
+# OPCODES
+PWR_OPCODE = 0x05 # Op Code 0x05 (Set Target Power)
+RESISTANCE_OPCODE = 0x04 # Op Code 0x04 (Set Target Resistance)
+REQUEST_CONTROL_OPCODE = 0x00 # Request control of the fitness machine (Op Code 0x00)
+# OTHER CONSTANTS
+# CHANGE LATER TO DO AUTOMATICALLY FOR POWER AND RESISTANCE
+MIN_PWR = 0
+MAX_PWR = 800
 
 async def scan_and_connect():
     print("Scanning for BLE devices broadcasting FTMS data...")
     devices = await BleakScanner.discover()
     for device in devices:
-        print(f"Found device: {device.name} ({device.address})")
-        # Print all UUIDs associated with the device
+        # Find all UUIDs associated with the device
         uuids = device.metadata.get("uuids", [])
-        if uuids:
-            print("UUIDs:")
-            for uuid in uuids:
-                print(f"  {uuid}")
 
         # Check for FTMS Service
         if FTMS_UUID in uuids:
@@ -53,7 +53,7 @@ async def scan_and_connect():
                                 print("Notifications enabled.")
 
                             # Request control of the fitness machine (Op Code 0x00)
-                            request_control_command = bytearray([0x00])
+                            request_control_command = bytearray([REQUEST_CONTROL_OPCODE])
                             try:
                                 await client.write_gatt_char(control_point_char.uuid, request_control_command, response=True)
                                 print("Requested control of the fitness machine. Waiting for response...")
@@ -62,13 +62,13 @@ async def scan_and_connect():
                                 print(f"Failed to request control: {e}")
                                 return
 
-                            # Gradually increase resistance from 0% to 100%
-                            for percentage in range(0, 1001, 100):
-                                resistance_dn = percentage#int(MIN_RESISTANCE_DN + (percentage / 100) * (MAX_RESISTANCE_DN - MIN_RESISTANCE_DN))
-                                resistance_command = bytearray([0x05, resistance_dn & 0xFF, (resistance_dn >> 8) & 0xFF])  # Op Code 0x05 (Set Target Power)
+                            # Gradually increase power from 0% to 100%
+                            for percentage in range(0, 101, 10):
+                                power = int(MIN_PWR + (percentage / 100) * (MAX_PWR - MIN_)PWR))
+                                adjust_command = bytearray([PWR_OPCODE, power & 0xFF, (power >> 8) & 0xFF]) # Op Code 0x05 (Set Target Power)
                                 try:
-                                    await client.write_gatt_char(control_point_char.uuid, resistance_command, response=True)
-                                    print(f"Resistance set to {percentage}% ({resistance_dn} dN). Waiting 5 seconds...")
+                                    await client.write_gatt_char(control_point_char.uuid, adjust_command, response=True)
+                                    print(f"Power set to {percentage}% ({resistance_dn} Watts). Waiting 5 seconds...")
                                     await asyncio.sleep(5)
                                 except Exception as e:
                                     print(f"Failed to set resistance: {e}")
