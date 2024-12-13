@@ -1,6 +1,7 @@
 import asyncio
 from bleak import BleakScanner, BleakClient
 import warnings
+from pynput import keyboard
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 class FitnessMachineController:
@@ -25,6 +26,8 @@ class FitnessMachineController:
         self.max_power = 800
         self.min_resistance = 0
         self.max_resistance = 100
+        self.current_power = 0
+        self.current_resistance = 0
 
     async def scan_and_connect(self):
         print("Scanning for BLE devices broadcasting FTMS data...")
@@ -52,10 +55,9 @@ class FitnessMachineController:
                                 await self.request_control()
                                 if self.PWR_OR_RES == 0:
                                     await self.get_supported_power_range()
-                                    await self.adjust_power()
                                 else:
                                     await self.get_supported_resistance_range()
-                                    await self.adjust_resistance()
+                                await self.listen_for_keys()
                                 await self.disable_notifications()
                             else:
                                 print("Control Point Characteristic not found.")
@@ -97,6 +99,7 @@ class FitnessMachineController:
             power_range_data = await self.client.read_gatt_char(self.SUPPORTED_POWER_RANGE_UUID)
             self.min_power = int.from_bytes(power_range_data[0:2], byteorder="little", signed=False)
             self.max_power = int.from_bytes(power_range_data[2:4], byteorder="little", signed=False)
+            self.current_power = self.min_power
             print(f"Supported Power Range: {self.min_power} to {self.max_power} Watts.")
         except Exception as e:
             print(f"Failed to read Supported Power Range: {e}")
@@ -106,31 +109,48 @@ class FitnessMachineController:
             resistance_range_data = await self.client.read_gatt_char(self.SUPPORTED_RESISTANCE_RANGE_UUID)
             self.min_resistance = int.from_bytes(resistance_range_data[0:2], byteorder="little")
             self.max_resistance = int.from_bytes(resistance_range_data[2:4], byteorder="little")
+            self.current_resistance = self.min_resistance
             print(f"Supported Resistance Range: {self.min_resistance} to {self.max_resistance} dN.")
         except Exception as e:
             print(f"Failed to read Supported Resistance Range: {e}")
 
-    async def adjust_power(self):
-        for percentage in range(0, 101, 10):
-            power = int(self.min_power + (percentage / 100) * (self.max_power - self.min_power))
-            adjust_command = bytearray([self.PWR_OPCODE, power & 0xFF, (power >> 8) & 0xFF])
-            try:
-                await self.client.write_gatt_char(self.control_point_char.uuid, adjust_command, response=True)
-                print(f"Power set to {percentage}% ({power} Watts). Waiting 5 seconds...")
-                await asyncio.sleep(5)
-            except Exception as e:
-                print(f"Failed to set power: {e}")
+    async def adjust_power(self, increase):
+        step = (self.max_power - self.min_power) * 0.05
+        self.current_power += step if increase else -step
+        self.current_power = max(self.min_power, min(self.current_power, self.max_power))
+        adjust_command = bytearray([self.PWR_OPCODE, int(self.current_power) & 0xFF, (int(self.current_power) >> 8) & 0xFF])
+        try:
+            await self.client.write_gatt_char(self.control_point_char.uuid, adjust_command, response=True)
+            print(f"Power set to {self.current_power} Watts.")
+        except Exception as e:
+            print(f"Failed to set power: {e}")
 
-    async def adjust_resistance(self):
-        for percentage in range(0, 101, 10):
-            resistance = int(self.min_resistance + (percentage / 100) * (self.max_resistance - self.min_resistance))
-            adjust_command = bytearray([self.RESISTANCE_OPCODE, resistance & 0xFF, (resistance >> 8) & 0xFF])
+    async def adjust_resistance(self, increase):
+        step = (self.max_resistance - self.min_resistance) * 0.05
+        self.current_resistance += step if increase else -step
+        self.current_resistance = max(self.min_resistance, min(self.current_resistance, self.max_resistance))
+        adjust_command = bytearray([self.RESISTANCE_OPCODE, int(self.current_resistance) & 0xFF, (int(self.current_resistance) >> 8) & 0xFF])
+        try:
+            await self.client.write_gatt_char(self.control_point_char.uuid, adjust_command, response=True)
+            print(f"Resistance set to {self.current_resistance} dN.")
+        except Exception as e:
+            print(f"Failed to set resistance: {e}")
+
+    async def listen_for_keys(self):
+        print("Listening for arrow key presses to adjust power or resistance...")
+
+        def on_press(key):
             try:
-                await self.client.write_gatt_char(self.control_point_char.uuid, adjust_command, response=True)
-                print(f"Resistance set to {percentage}% ({resistance} dN). Waiting 5 seconds...")
-                await asyncio.sleep(5)
+                if key == keyboard.Key.up:
+                    asyncio.create_task(self.adjust_power(True) if self.PWR_OR_RES == 0 else self.adjust_resistance(True))
+                elif key == keyboard.Key.down:
+                    asyncio.create_task(self.adjust_power(False) if self.PWR_OR_RES == 0 else self.adjust_resistance(False))
             except Exception as e:
-                print(f"Failed to set resistance: {e}")
+                print(f"Error handling key press: {e}")
+
+        with keyboard.Listener(on_press=on_press) as listener:
+            await asyncio.sleep(30)  # Adjust duration as needed
+            listener.stop()
 
 if __name__ == "__main__":
     controller = FitnessMachineController()
