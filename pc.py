@@ -1,5 +1,7 @@
 import asyncio
 from bleak import BleakScanner, BleakClient
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
 class FitnessMachineController:
     # UUIDS
@@ -14,7 +16,7 @@ class FitnessMachineController:
     REQUEST_CONTROL_OPCODE = 0x00  # Request control of the fitness machine (Op Code 0x00)
 
     # Constants
-    PWR_OR_RES = 0  # 0 for Power, 1 for Resistance
+    PWR_OR_RES = 1  # 0 for Power, 1 for Resistance
 
     def __init__(self):
         self.client = None
@@ -93,8 +95,8 @@ class FitnessMachineController:
     async def get_supported_power_range(self):
         try:
             power_range_data = await self.client.read_gatt_char(self.SUPPORTED_POWER_RANGE_UUID)
-            self.min_power = int.from_bytes(power_range_data[:2], byteorder="little")
-            self.max_power = int.from_bytes(power_range_data[2:], byteorder="little")
+            self.min_power = int.from_bytes(power_range_data[0:2], byteorder="little", signed=False)
+            self.max_power = int.from_bytes(power_range_data[2:4], byteorder="little", signed=False)
             print(f"Supported Power Range: {self.min_power} to {self.max_power} Watts.")
         except Exception as e:
             print(f"Failed to read Supported Power Range: {e}")
@@ -102,8 +104,8 @@ class FitnessMachineController:
     async def get_supported_resistance_range(self):
         try:
             resistance_range_data = await self.client.read_gatt_char(self.SUPPORTED_RESISTANCE_RANGE_UUID)
-            self.min_resistance = int.from_bytes(resistance_range_data[:2], byteorder="little")
-            self.max_resistance = int.from_bytes(resistance_range_data[2:], byteorder="little")
+            self.min_resistance = int.from_bytes(resistance_range_data[0:2], byteorder="little")
+            self.max_resistance = int.from_bytes(resistance_range_data[2:4], byteorder="little")
             print(f"Supported Resistance Range: {self.min_resistance} to {self.max_resistance} dN.")
         except Exception as e:
             print(f"Failed to read Supported Resistance Range: {e}")
